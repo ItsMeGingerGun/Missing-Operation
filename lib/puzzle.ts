@@ -78,3 +78,18 @@ export const SAMPLE_PUZZLES: Puzzle[] = [
   { id: '3', type: 'Calculation', difficulty: 'Master', problem: '84 ÷ 4 + 15 × 2', solution: 51 },
   { id: '4', type: 'MissingOperation', difficulty: 'Apprentice', problem: '20 ? 5 + 10 = 14', solution: '-', options: ['+', '-', '×', '÷'] },
 ];
+
+// Frame-specific puzzle generation (simplified for Frames)
+export const generateFramePuzzle = (): Puzzle => {
+  const type = Math.random() > 0.5 ? 'Calculation' : 'MissingOperation';
+  const difficulty = ['Apprentice', 'Scholar', 'Master'][Math.floor(Math.random() * 3)] as 'Apprentice' | 'Scholar' | 'Master';
+  return generatePuzzle(type, difficulty);
+};
+
+// Add frame-specific sample puzzles
+export const FRAME_SAMPLE_PUZZLES: Puzzle[] = [
+  { id: 'frame1', type: 'Calculation', difficulty: 'Apprentice', problem: '8 + 5 - 3 × 2', solution: 12 },
+  { id: 'frame2', type: 'MissingOperation', difficulty: 'Scholar', problem: '30 ? 6 × 4 = 6', solution: '-', options: ['+', '-', '×', '÷'] },
+  { id: 'frame3', type: 'Calculation', difficulty: 'Master', problem: '45 ÷ 9 + 7 × 3', solution: 26 },
+  { id: 'frame4', type: 'MissingOperation', difficulty: 'Apprentice', problem: '15 ? 3 + 4 = 19', solution: '+', options: ['+', '-', '×', '÷'] },
+];
