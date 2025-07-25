@@ -7,6 +7,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@farcaster/frame-sdk": "^0.0.60",
     "@neynar/nodejs-sdk": "^0.10.0",
     "@upstash/redis": "^1.25.0",
     "@vercel/kv": "^0.2.0",
