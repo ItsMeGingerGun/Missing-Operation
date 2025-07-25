@@ -6,6 +6,7 @@ import PuzzleDisplay from '@/components/PuzzleDisplay';
 import Leaderboard from '@/components/Leaderboard';
 import { useNeynar } from '@/lib/neynar';
 import { SAMPLE_PUZZLES } from '@/lib/puzzle';
+import Link from 'next/link';
 
 type GameState = 'AUTH' | 'SELECT' | 'PLAYING' | 'RESULT';
 
@@ -128,6 +129,9 @@ export default function Home() {
                 </p>
                 <AuthButton />
               </div>
+              <Link href="/frame" className="text-blue-400 hover:text-blue-300 underline">
+                Or try the Farcaster Frame version
+              </Link>
             </div>
           </div>
         )}
