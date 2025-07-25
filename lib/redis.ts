@@ -51,6 +51,15 @@ export const storePuzzle = (puzzle: Puzzle) => {
   return redis.setex(`puzzle:${puzzle.id}`, 600, puzzle);
 };
 
+// Frame-specific storage with 5min TTL
+export const storeFramePuzzle = (puzzle: Puzzle) => {
+  return redis.setex(`frame:puzzle:${puzzle.id}`, 300, puzzle);
+};
+
+export const getFramePuzzle = async (puzzleId: string): Promise<Puzzle | null> => {
+  return redis.get(`frame:puzzle:${puzzleId}`);
+};
+
 // User session storage
 export const storeUser = async (fid: string, username: string, pfp: string) => {
   await redis.hset(`user:${fid}`, { username, pfp });
