@@ -1,8 +1,22 @@
 {
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/frame",
+      "dest": "/app/frame/page.tsx"
+    },
+    {
+      "src": "/.well-known/farcaster.json",
+      "dest": "/public/.well-known/farcaster.json"
     }
   ],
   "headers": [
@@ -13,5 +27,7 @@
         { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" }
       ]
     }
-  ]
+  ],
+  "framework": "nextjs",
+  "regions": ["iad1"]
 }
