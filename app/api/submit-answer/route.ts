@@ -2,6 +2,7 @@ import { redis, updateLeaderboard } from '@/lib/redis';
 import { rateLimit } from '@/lib/rate-limit';
 import { NextResponse } from 'next/server';
 import type { Puzzle } from '@/types';
+import { trackFrameEvent } from '@/lib/frameAnalytics';
 
 export async function POST(req: Request) {
   const { puzzleId, answer, fid, username } = await req.json();
@@ -12,7 +13,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const puzzle = await redis.get<Puzzle>(`puzzle:${puzzleId}`);
+    // Check both regular and frame puzzles
+    let puzzle = await redis.get<Puzzle>(`puzzle:${puzzleId}`);
+    if (!puzzle) {
+      puzzle = await redis.get<Puzzle>(`frame:puzzle:${puzzleId}`);
+    }
+    
     if (!puzzle) {
       return NextResponse.json({ error: 'Puzzle not found' }, { status: 404 });
     }
@@ -33,6 +39,20 @@ export async function POST(req: Request) {
       };
       pointsEarned = 100 * multipliers[puzzle.difficulty];
       await updateLeaderboard(fid, username, pointsEarned);
+    }
+    
+    // Track analytics
+    if (isCorrect) {
+      trackFrameEvent('correct_answer', {
+        puzzleId,
+        fid,
+        pointsEarned
+      });
+    } else {
+      trackFrameEvent('incorrect_answer', {
+        puzzleId,
+        fid
+      });
     }
     
     return NextResponse.json({ 
