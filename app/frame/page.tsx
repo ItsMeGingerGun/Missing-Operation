@@ -1,14 +1,33 @@
 'use client';
 import * as frame from '@farcaster/frame-sdk';
 import { useEffect, useState } from 'react';
-import { generatePuzzle, SAMPLE_PUZZLES } from '@/lib/puzzle';
-import { redis } from '@/lib/redis';
+import { generateFramePuzzle, FRAME_SAMPLE_PUZZLES } from '@/lib/puzzle';
+import { redis, storeFramePuzzle } from '@/lib/redis';
 import { useRouter } from 'next/navigation';
+import type { Puzzle } from '@/types';
+
+export const metadata = {
+  title: 'Missing Operation - Farcaster Frame',
+  description: 'Solve math puzzles in Farcaster Frames',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'),
+  openGraph: {
+    images: [
+      {
+        url: '/images/opengraph-frame.png',
+        width: 800,
+        height: 600,
+        alt: 'Math Puzzle Frame',
+      },
+    ],
+  },
+};
 
 export default function FramePage() {
-  const [puzzle, setPuzzle] = useState<any>(null);
+  const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [result, setResult] = useState<{correct: boolean, solution: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [fid, setFid] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -19,24 +38,32 @@ export default function FramePage() {
         
         // Get Farcaster context
         const context = await frame.sdk.context();
-        console.log('Farcaster context:', context);
+        
+        if (context.isValid && context.user) {
+          setFid(context.user.fid.toString());
+        } else {
+          console.warn('No valid Farcaster context found. Using demo mode.');
+        }
         
         // Generate a puzzle
-        const puzzleType = Math.random() > 0.5 ? 'Calculation' : 'MissingOperation';
-        const difficulty = ['Apprentice', 'Scholar', 'Master'][Math.floor(Math.random() * 3)];
-        const puzzle = generatePuzzle(puzzleType, difficulty);
+        const puzzle = generateFramePuzzle();
         
         // Store puzzle in Redis
-        await redis.setex(`puzzle:${puzzle.id}`, 300, puzzle);
+        await storeFramePuzzle(puzzle);
         setPuzzle(puzzle);
+        setIsLoading(false);
         
       } catch (error) {
         console.error('Frame initialization failed:', error);
+        setError('Failed to initialize frame. Trying demo puzzle...');
+        
         // Fallback to sample puzzle
-        const sample = SAMPLE_PUZZLES[Math.floor(Math.random() * SAMPLE_PUZZLES.length)];
+        const sample = FRAME_SAMPLE_PUZZLES[
+          Math.floor(Math.random() * FRAME_SAMPLE_PUZZLES.length)
+        ];
         setPuzzle(sample);
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     initializeFrame();
@@ -57,18 +84,30 @@ export default function FramePage() {
       solution: puzzle.solution.toString()
     });
     
-    // Send interaction to Frame
-    frame.sdk.actions.track('answer_submitted', {
-      puzzleId: puzzle.id,
-      answer,
-      correct
-    });
+    // Track analytics if we have a fid
+    if (fid) {
+      try {
+        await fetch('/api/submit-answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            puzzleId: puzzle.id,
+            answer,
+            fid,
+            username: `fid:${fid}`
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
   };
 
   const playAgain = () => {
     setPuzzle(null);
     setResult(null);
     setIsLoading(true);
+    setError(null);
     setTimeout(() => window.location.reload(), 500);
   };
 
@@ -76,9 +115,10 @@ export default function FramePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
         <div className="text-center">
-          <div className="text-4xl mb-4">🧩</div>
+          <div className="text-4xl mb-4 animate-bounce">🧩</div>
           <h1 className="text-2xl font-bold text-white">Loading Puzzle...</h1>
-          <p className="text-gray-400 mt-2">Powered by Farcaster Frames</p>
+          <p className="text-gray-400 mt-4">Powered by Farcaster Frames</p>
+          {error && <p className="text-yellow-500 mt-2">{error}</p>}
         </div>
       </div>
     );
@@ -87,7 +127,7 @@ export default function FramePage() {
   if (result) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-        <div className="bg-gray-800 rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+        <div className="bg-gray-800 rounded-xl shadow-lg p-8 max-w-md w-full text-center border-2 border-purple-600">
           <div className={`text-8xl mb-6 ${result.correct ? 'text-green-500' : 'text-red-500'}`}>
             {result.correct ? '✓' : '✗'}
           </div>
@@ -96,14 +136,14 @@ export default function FramePage() {
           </h2>
           
           {!result.correct && (
-            <p className="text-xl mb-6">
-              Solution: <span className="font-bold">{result.solution}</span>
+            <p className="text-xl mb-6 bg-gray-700 p-4 rounded-lg">
+              Solution: <span className="font-mono font-bold">{result.solution}</span>
             </p>
           )}
           
           <button
             onClick={playAgain}
-            className="bg-farcaster-purple hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold text-lg"
+            className="bg-farcaster-purple hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold text-lg w-full transition"
           >
             Play Again
           </button>
@@ -111,7 +151,7 @@ export default function FramePage() {
           <div className="mt-8">
             <button
               onClick={() => router.push('/')}
-              className="text-gray-400 hover:text-white underline"
+              className="text-gray-400 hover:text-white underline text-sm"
             >
               Go to Full App
             </button>
@@ -123,13 +163,19 @@ export default function FramePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-      <div className="bg-gray-800 rounded-xl shadow-lg p-6 max-w-md w-full">
+      <div className="bg-gray-800 rounded-xl shadow-lg p-6 max-w-md w-full border-2 border-purple-700">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-xl font-bold text-farcaster-purple">Missing Operation</h1>
-          <span className="text-sm font-semibold bg-gray-700 px-2 py-1 rounded">
+          <h1 className="text-xl font-bold text-farcaster-purple">Math Puzzles</h1>
+          <span className="text-sm font-semibold bg-purple-900 px-2 py-1 rounded">
             Farcaster Frame
           </span>
         </div>
+        
+        {error && (
+          <div className="bg-yellow-900 text-yellow-200 p-3 rounded-lg mb-4">
+            <p className="text-sm">{error}</p>
+          </div>
+        )}
         
         {puzzle && (
           <div className="mb-6">
@@ -142,7 +188,7 @@ export default function FramePage() {
               </span>
             </div>
             
-            <div className="text-2xl font-bold bg-gray-700 p-4 rounded-lg text-center my-4">
+            <div className="text-2xl font-bold bg-gray-900 p-6 rounded-lg text-center my-4 border border-gray-700 font-mono">
               {puzzle.problem}
             </div>
             
@@ -152,7 +198,7 @@ export default function FramePage() {
                   <button
                     key={op}
                     onClick={() => handleAnswer(op)}
-                    className="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold text-xl transition"
+                    className="p-4 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold text-2xl transition hover:scale-105"
                   >
                     {op}
                   </button>
@@ -163,7 +209,7 @@ export default function FramePage() {
                 <input
                   type="number"
                   placeholder="Enter answer"
-                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-center"
+                  className="w-full p-4 bg-gray-700 border border-gray-600 rounded-lg text-center text-xl font-bold"
                   onBlur={(e) => handleAnswer(e.target.value)}
                 />
                 <button
@@ -171,16 +217,16 @@ export default function FramePage() {
                     const input = document.querySelector('input');
                     if (input) handleAnswer(input.value);
                   }}
-                  className="w-full p-3 bg-farcaster-purple hover:bg-purple-700 text-white rounded-lg font-bold"
+                  className="w-full p-4 bg-farcaster-purple hover:bg-purple-700 text-white rounded-lg font-bold transition"
                 >
-                  Submit
+                  Submit Answer
                 </button>
               </div>
             )}
           </div>
         )}
         
-        <div className="text-center text-gray-500 text-sm mt-6">
+        <div className="text-center text-gray-500 text-sm mt-6 pt-4 border-t border-gray-700">
           <p>Powered by Farcaster Frames SDK</p>
           <button
             onClick={() => router.push('/')}
