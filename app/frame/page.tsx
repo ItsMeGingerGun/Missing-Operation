@@ -1,8 +1,8 @@
 'use client';
 import * as frame from '@farcaster/frame-sdk';
 import { useEffect, useState } from 'react';
-import { generateFramePuzzle, FRAME_SAMPLE_PUZZLES } from '@/lib/puzzle';
-import { redis, storeFramePuzzle } from '@/lib/redis';
+import { generateFramePuzzle, FRAME_SAMPLE_PUZZLES } from './lib/puzzle';
+import { redis, storeFramePuzzle } from './lib/redis';
 import { useRouter } from 'next/navigation';
 import type { Puzzle } from '@/types';
 
