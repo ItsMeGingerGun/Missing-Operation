@@ -1,38 +1,29 @@
-import './globals.css';
 import type { Metadata } from 'next';
-import { NeynarProvider } from '@/lib/neynar';
-import FrameNav from '@/components/FrameNav';
 
 export const metadata: Metadata = {
-  title: 'Missing Operation',
-  description: 'Farcaster Math Puzzle Mini-App',
+  title: 'Missing Operation - Farcaster Frame',
+  description: 'Solve math puzzles in Farcaster Frames',
   metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'),
   openGraph: {
     images: [
       {
-        url: '/images/opengraph.png',
-        width: 1200,
-        height: 630,
+        url: '/images/opengraph-frame.png',
+        width: 800,
+        height: 600,
+        alt: 'Math Puzzle Frame',
       },
     ],
   },
 };
 
-export default function RootLayout({
+export default function FrameLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
     <html lang="en">
-      <body className="bg-gradient-to-b from-gray-900 to-gray-800 min-h-screen text-white">
-        <NeynarProvider>
-          <div className="max-w-4xl mx-auto px-4 py-8">
-            {children}
-            <FrameNav />
-          </div>
-        </NeynarProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
