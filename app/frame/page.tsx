@@ -6,7 +6,7 @@ import { redis, storeFramePuzzle } from '@/lib/redis';
 import { useRouter } from 'next/navigation';
 import type { Puzzle } from '@/types';
 
-export const metadata = {
+export default function FramePage() {
   title: 'Missing Operation - Farcaster Frame',
   description: 'Solve math puzzles in Farcaster Frames',
   metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'),
