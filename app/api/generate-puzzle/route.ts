@@ -1,8 +1,8 @@
-import { generatePuzzle } from '@/lib/puzzle';
-import { storePuzzle } from '@/lib/redis';
-import { rateLimit } from '@/lib/rate-limit';
+import { generatePuzzle } from '../../lib/puzzle';
+import { storePuzzle } from '../../lib/redis';
+import { rateLimit } from '../../lib/rate-limit';
 import { NextResponse } from 'next/server';
-import type { Puzzle } from '@/types';
+import type { Puzzle } from '../../types';
 
 export async function POST(req: Request) {
   const { fid, type, difficulty } = await req.json();
