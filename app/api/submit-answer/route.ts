@@ -1,8 +1,8 @@
-import { redis, updateLeaderboard } from '@/lib/redis';
-import { rateLimit } from '@/lib/rate-limit';
+import { redis, updateLeaderboard } from '../../lib/redis';
+import { rateLimit } from '../../lib/rate-limit';
 import { NextResponse } from 'next/server';
-import type { Puzzle } from '@/types';
-import { trackFrameEvent } from '@/lib/frameAnalytics';
+import type { Puzzle } from '../../types';
+import { trackFrameEvent } from '../../lib/frameAnalytics';
 
 export async function POST(req: Request) {
   const { puzzleId, answer, fid, username } = await req.json();
