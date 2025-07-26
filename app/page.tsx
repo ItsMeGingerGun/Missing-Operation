@@ -1,241 +1,230 @@
 'use client';
-import { useState, useEffect } from 'react';
-import AuthButton from '@/components/AuthButton';
-import DifficultyCard from '@/components/DifficultyCard';
-import PuzzleDisplay from '@/components/PuzzleDisplay';
-import Leaderboard from '@/components/Leaderboard';
-import { useNeynar } from '@/lib/neynar';
-import { SAMPLE_PUZZLES } from '@/lib/puzzle';
-import Link from 'next/link';
+import * as frame from '@farcaster/frame-sdk';
+import { useEffect, useState } from 'react';
+import { generateFramePuzzle, FRAME_SAMPLE_PUZZLES } from '@/lib/puzzle';
+import { redis, storeFramePuzzle } from '@/lib/redis';
+import { useRouter } from 'next/navigation';
+import type { Puzzle } from '@/types';
 
-type GameState = 'AUTH' | 'SELECT' | 'PLAYING' | 'RESULT';
+export default function FramePage() {
+  const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [result, setResult] = useState<{correct: boolean, solution: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [fid, setFid] = useState<string | null>(null);
+  const router = useRouter();
 
-export default function Home() {
-  const [gameState, setGameState] = useState<GameState>('AUTH');
-  const [puzzle, setPuzzle] = useState<any>(null);
-  const [score, setScore] = useState(0);
-  const [selectedType, setSelectedType] = useState<'Calculation' | 'MissingOperation'>('Calculation');
-  const [gameResult, setGameResult] = useState<{correct: boolean, points: number} | null>(null);
-  const { user } = useNeynar();
-
-  // Auto-select difficulty if user is authenticated
   useEffect(() => {
-    if (user) {
-      setGameState('SELECT');
-    }
-  }, [user]);
-
-  const startGame = async (type: 'Calculation' | 'MissingOperation', difficulty: 'Apprentice' | 'Scholar' | 'Master') => {
-    setSelectedType(type);
-    
-    try {
-      const res = await fetch('/api/generate-puzzle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          type, 
-          difficulty,
-          fid: user?.fid
-        }),
-      });
-      
-      const data = await res.json();
-      setPuzzle(data);
-      setGameState('PLAYING');
-    } catch (error) {
-      console.error('Failed to start game:', error);
-      // Fallback to sample puzzle
-      const sample = SAMPLE_PUZZLES.find(p => 
-        p.type === type && p.difficulty === difficulty
-      );
-      if (sample) {
+    const initializeFrame = async () => {
+      try {
+        // Initialize Frame SDK
+        await frame.sdk.actions.ready();
+        
+        // Get Farcaster context
+        const context = await frame.sdk.context();
+        
+        if (context.isValid && context.user) {
+          setFid(context.user.fid.toString());
+        } else {
+          console.warn('No valid Farcaster context found. Using demo mode.');
+        }
+        
+        // Generate a puzzle
+        const puzzle = generateFramePuzzle();
+        
+        // Store puzzle in Redis if connection is available
+        try {
+          await storeFramePuzzle(puzzle);
+        } catch (redisError) {
+          console.warn('Redis storage failed. Using in-memory puzzle only.');
+        }
+        
+        setPuzzle(puzzle);
+        setIsLoading(false);
+        
+      } catch (error) {
+        console.error('Frame initialization failed:', error);
+        setError('Failed to initialize frame. Trying demo puzzle...');
+        
+        // Fallback to sample puzzle
+        const sample = FRAME_SAMPLE_PUZZLES[
+          Math.floor(Math.random() * FRAME_SAMPLE_PUZZLES.length)
+        ];
         setPuzzle(sample);
-        setGameState('PLAYING');
+        setIsLoading(false);
       }
-    }
-  };
+    };
 
-  const submitAnswer = async (answer: string | number) => {
-    if (!user || !puzzle) return;
+    initializeFrame();
+  }, []);
+
+  const handleAnswer = async (answer: string | number) => {
+    if (!puzzle) return;
     
-    try {
-      const res = await fetch('/api/submit-answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          puzzleId: puzzle.id, 
-          answer,
-          fid: user.fid,
-          username: user.username
-        }),
-      });
-      
-      const result = await res.json();
-      setGameResult({
-        correct: result.correct,
-        points: result.pointsEarned || 0
-      });
-      
-      if (result.correct) {
-        setScore(prev => prev + result.pointsEarned);
-      }
-    } catch (error) {
-      console.error('Submission failed:', error);
-      setGameResult({
-        correct: false,
-        points: 0
-      });
+    let correct = false;
+    if (puzzle.type === 'Calculation') {
+      correct = Math.abs(puzzle.solution - Number(answer)) < 0.001;
+    } else {
+      correct = puzzle.solution === answer;
     }
     
-    setGameState('RESULT');
+    setResult({
+      correct,
+      solution: puzzle.solution.toString()
+    });
+    
+    // Track analytics if we have a fid
+    if (fid) {
+      try {
+        await fetch('/api/submit-answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            puzzleId: puzzle.id,
+            answer,
+            fid,
+            username: `fid:${fid}`
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
   };
 
   const playAgain = () => {
-    setGameResult(null);
-    setGameState('SELECT');
+    setPuzzle(null);
+    setResult(null);
+    setIsLoading(true);
+    setError(null);
+    setTimeout(() => window.location.reload(), 500);
   };
 
-  return (
-    <div className="min-h-screen">
-      <header className="flex justify-between items-center mb-8 py-4 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          <div className="bg-farcaster-purple p-2 rounded-lg">
-            <div className="text-white font-bold text-xl">🧩</div>
-          </div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-farcaster-purple bg-clip-text text-transparent">
-            Missing Operation
-          </h1>
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-bounce">🧩</div>
+          <h1 className="text-2xl font-bold text-white">Loading Puzzle...</h1>
+          <p className="text-gray-400 mt-4">Powered by Farcaster Frames</p>
+          {error && <p className="text-yellow-500 mt-2">{error}</p>}
         </div>
-        <div className="flex items-center gap-4">
-          {user && gameState !== 'AUTH' && (
-            <div className="bg-gray-800 px-4 py-2 rounded-lg">
-              <span className="text-gray-300 mr-2">Score:</span>
-              <span className="font-bold text-xl">{score}</span>
-            </div>
+      </div>
+    );
+  }
+
+  if (result) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
+        <div className="bg-gray-800 rounded-xl shadow-lg p-8 max-w-md w-full text-center border-2 border-purple-600">
+          <div className={`text-8xl mb-6 ${result.correct ? 'text-green-500' : 'text-red-500'}`}>
+            {result.correct ? '✓' : '✗'}
+          </div>
+          <h2 className="text-3xl font-bold text-white mb-4">
+            {result.correct ? 'Correct!' : 'Try Again!'}
+          </h2>
+          
+          {!result.correct && (
+            <p className="text-xl mb-6 bg-gray-700 p-4 rounded-lg">
+              Solution: <span className="font-mono font-bold">{result.solution}</span>
+            </p>
           )}
-          <AuthButton />
+          
+          <button
+            onClick={playAgain}
+            className="bg-farcaster-purple hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold text-lg w-full transition"
+          >
+            Play Again
+          </button>
+          
+          <div className="mt-8">
+            <button
+              onClick={() => router.push('/')}
+              className="text-gray-400 hover:text-white underline text-sm"
+            >
+              Go to Full App
+            </button>
+          </div>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      <main>
-        {gameState === 'AUTH' && (
-          <div className="text-center py-16">
-            <div className="max-w-md mx-auto">
-              <div className="bg-gray-800 rounded-xl p-8 mb-8">
-                <div className="text-6xl mb-6">🧩</div>
-                <h2 className="text-3xl font-bold mb-4">Solve Math Puzzles</h2>
-                <p className="text-gray-300 mb-8">
-                  Connect your Farcaster wallet to play and compete on the leaderboard!
-                </p>
-                <AuthButton />
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
+      <div className="bg-gray-800 rounded-xl shadow-lg p-6 max-w-md w-full border-2 border-purple-700">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-xl font-bold text-farcaster-purple">Math Puzzles</h1>
+          <span className="text-sm font-semibold bg-purple-900 px-2 py-1 rounded">
+            Farcaster Frame
+          </span>
+        </div>
+        
+        {error && (
+          <div className="bg-yellow-900 text-yellow-200 p-3 rounded-lg mb-4">
+            <p className="text-sm">{error}</p>
+          </div>
+        )}
+        
+        {puzzle && (
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-semibold bg-gray-700 px-2 py-1 rounded">
+                {puzzle.type}
+              </span>
+              <span className="text-sm font-semibold bg-gray-700 px-2 py-1 rounded">
+                {puzzle.difficulty}
+              </span>
+            </div>
+            
+            <div className="text-2xl font-bold bg-gray-900 p-6 rounded-lg text-center my-4 border border-gray-700 font-mono">
+              {puzzle.problem}
+            </div>
+            
+            {puzzle.type === 'MissingOperation' ? (
+              <div className="grid grid-cols-2 gap-3">
+                {puzzle.options?.map((op: string) => (
+                  <button
+                    key={op}
+                    onClick={() => handleAnswer(op)}
+                    className="p-4 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold text-2xl transition hover:scale-105"
+                  >
+                    {op}
+                  </button>
+                ))}
               </div>
-              <Link href="/frame" className="text-blue-400 hover:text-blue-300 underline">
-                Or try the Farcaster Frame version
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {gameState === 'SELECT' && (
-          <div className="py-8">
-            <h2 className="text-3xl font-bold text-center mb-12">
-              Select Puzzle Difficulty
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-              <DifficultyCard 
-                level="Apprentice"
-                numbers="1-20"
-                operations="+ -"
-                time={30}
-                multiplier={1}
-                onClick={() => startGame(selectedType, 'Apprentice')}
-              />
-              
-              <DifficultyCard 
-                level="Scholar"
-                numbers="10-50"
-                operations="+ - ×"
-                time={25}
-                multiplier={2}
-                onClick={() => startGame(selectedType, 'Scholar')}
-              />
-              
-              <DifficultyCard 
-                level="Master"
-                numbers="20-100"
-                operations="+ - × ÷"
-                time={20}
-                multiplier={3}
-                onClick={() => startGame(selectedType, 'Master')}
-              />
-            </div>
-            
-            <div className="mt-12 max-w-md mx-auto">
-              <div className="flex justify-center gap-4 mb-6">
-                <button
-                  onClick={() => setSelectedType('Calculation')}
-                  className={`px-6 py-3 rounded-lg font-bold transition ${
-                    selectedType === 'Calculation'
-                      ? 'bg-purple-600'
-                      : 'bg-gray-700 hover:bg-gray-600'
-                  }`}
-                >
-                  Calculation Puzzles
-                </button>
-                <button
-                  onClick={() => setSelectedType('MissingOperation')}
-                  className={`px-6 py-3 rounded-lg font-bold transition ${
-                    selectedType === 'MissingOperation'
-                      ? 'bg-purple-600'
-                      : 'bg-gray-700 hover:bg-gray-600'
-                  }`}
-                >
-                  Missing Operation
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {gameState === 'PLAYING' && puzzle && (
-          <div className="max-w-2xl mx-auto">
-            <PuzzleDisplay puzzle={puzzle} onSubmit={submitAnswer} />
-          </div>
-        )}
-
-        {gameState === 'RESULT' && gameResult && (
-          <div className="max-w-md mx-auto text-center py-16">
-            <div className="text-8xl mb-6">
-              {gameResult.correct ? '🎉' : '❌'}
-            </div>
-            <h2 className="text-4xl font-bold mb-4">
-              {gameResult.correct ? 'Correct!' : 'Try Again!'}
-            </h2>
-            
-            {gameResult.correct ? (
-              <p className="text-2xl mb-6">
-                +{gameResult.points} points!
-              </p>
             ) : (
-              <p className="text-xl mb-6">
-                Solution: <span className="font-bold">{puzzle?.solution}</span>
-              </p>
+              <div className="space-y-3">
+                <input
+                  type="number"
+                  placeholder="Enter answer"
+                  className="w-full p-4 bg-gray-700 border border-gray-600 rounded-lg text-center text-xl font-bold"
+                  onBlur={(e) => handleAnswer(e.target.value)}
+                />
+                <button
+                  onClick={() => {
+                    const input = document.querySelector('input');
+                    if (input) handleAnswer(input.value);
+                  }}
+                  className="w-full p-4 bg-farcaster-purple hover:bg-purple-700 text-white rounded-lg font-bold transition"
+                >
+                  Submit Answer
+                </button>
+              </div>
             )}
-            
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={playAgain}
-                className="bg-gradient-to-r from-purple-600 to-farcaster-purple text-white px-8 py-4 rounded-lg font-bold text-xl"
-              >
-                Play Again
-              </button>
-            </div>
           </div>
         )}
-      </main>
-
-      <Leaderboard />
+        
+        <div className="text-center text-gray-500 text-sm mt-6 pt-4 border-t border-gray-700">
+          <p>Powered by Farcaster Frames SDK</p>
+          <button
+            onClick={() => router.push('/')}
+            className="mt-2 text-gray-400 hover:text-white underline"
+          >
+            Go to Full App
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
