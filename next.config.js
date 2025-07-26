@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
-  experimental: {
-    appDir: true,
-  },
   images: {
     domains: ['i.imgur.com'],
   },
@@ -22,14 +19,6 @@ module.exports = {
           { key: 'Content-Type', value: 'application/json' },
           { key: 'Access-Control-Allow-Origin', value: '*' }
         ]
-      }
-    ];
-  },
-  async rewrites() {
-    return [
-      {
-        source: '/frame',
-        destination: '/app/frame/page'
       }
     ];
   }
